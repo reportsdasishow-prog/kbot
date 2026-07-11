@@ -5,7 +5,7 @@ import telebot
 import yt_dlp
 
 # Токен берется из переменных окружения Render
-API_TOKEN = os.environ.get('8608670501:AAGBhubu0cU__XQWIP2FPqHln7_cM-RE9vY')
+API_TOKEN = os.environ.get('BOT_TOKEN')
 if not API_TOKEN:
     raise ValueError("Переменная окружения BOT_TOKEN не задана!")
 
