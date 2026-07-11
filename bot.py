@@ -39,7 +39,7 @@ def search_and_send_audio(message):
     query = message.text
     status_msg = bot.reply_to(message, f"🔍 Ищу и скачиваю: '{query}'...")
     
-    ydl_opts = {
+ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'postprocessors': [{
@@ -49,6 +49,12 @@ def search_and_send_audio(message):
         }],
         'noplaylist': True,
         'quiet': True,
+        # Обход блокировок: заставляем запросы выглядеть как запросы с Android/iOS приложений
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios']
+            }
+        }
     }
 
     try:
