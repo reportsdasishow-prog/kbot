@@ -18,12 +18,11 @@ DOWNLOAD_DIR = 'downloads'
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
 
-# Кэш для результатов поиска
+# Кэш результатов поиска
 SEARCH_CACHE = OrderedDict()
 MAX_CACHE_SIZE = 100
 ITEMS_PER_PAGE = 8
 
-# Класс для обработки проверок доступности от Render
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -77,7 +76,6 @@ def generate_search_keyboard(search_id, page=1):
             title = title[:42] + "..."
         
         button_text = f"{duration} {title}"
-        # Передаем ID поиска и индекс элемента в кэше, чтобы не превысить лимит 64 байт в Callback
         markup.add(InlineKeyboardButton(text=button_text, callback_data=f"dl_{search_id}_{i}"))
         
     nav_buttons = []
@@ -94,14 +92,13 @@ def generate_search_keyboard(search_id, page=1):
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "Привет! Напиши мне название песни или артиста, и я найду музыку на SoundCloud.")
+    bot.reply_to(message, "Привет! Отправь мне название песни, и я покажу список найденных треков.")
 
 @bot.message_handler(func=lambda message: True)
 def search_songs(message):
     query = message.text
-    status_msg = bot.reply_to(message, f"🔍 Ищу '{query}' на SoundCloud...")
+    status_msg = bot.reply_to(message, f"🔍 Ищу '{query}'...")
     
-    # Ищем по SoundCloud (scsearch) без скачивания на первом этапе
     ydl_opts = {
         'extract_flat': True,
         'skip_download': True,
@@ -110,8 +107,8 @@ def search_songs(message):
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Ищем до 24 результатов
-            info = ydl.extract_info(f"scsearch24:{query}", download=False)
+            # Ищем до 24 результатов на YouTube
+            info = ydl.extract_info(f"ytsearch24:{query}", download=False)
             
             if not info or 'entries' not in info or len(info['entries']) == 0:
                 bot.edit_message_text("К сожалению, ничего не найдено.", chat_id=message.chat.id, message_id=status_msg.message_id)
@@ -135,7 +132,7 @@ def search_songs(message):
                     reply_markup=markup
                 )
             else:
-                bot.edit_message_text("Ошибка при генерации меню.", chat_id=message.chat.id, message_id=status_msg.message_id)
+                bot.edit_message_text("Ошибка при генерации списка.", chat_id=message.chat.id, message_id=status_msg.message_id)
                 
     except Exception as e:
         print(f"Ошибка поиска: {e}")
@@ -183,22 +180,21 @@ def handle_callbacks(call):
         
         search_data = SEARCH_CACHE.get(search_id)
         if not search_data or item_idx >= len(search_data['results']):
-            bot.answer_callback_query(call.id, "Результаты поиска устарели. Пожалуйста, выполните поиск заново.")
+            bot.answer_callback_query(call.id, "Результаты поиска устарели. Повторите поиск.")
             return
             
         track_info = search_data['results'][item_idx]
-        track_url = track_info.get('url')
+        video_id = track_info.get('id')
         track_title = track_info.get('title', 'Аудио')
-        uploader = track_info.get('uploader', 'SoundCloud')
+        uploader = track_info.get('uploader', 'Неизвестен')
         
-        if not track_url:
-            bot.answer_callback_query(call.id, "Ссылка на трек недоступна.")
+        if not video_id:
+            bot.answer_callback_query(call.id, "Не удалось получить ID трека.")
             return
             
         bot.answer_callback_query(call.id, "Запускаю скачивание...")
-        downloading_msg = bot.send_message(call.message.chat.id, "⏳ Скачиваю выбранный трек с SoundCloud, пожалуйста, подождите...")
+        downloading_msg = bot.send_message(call.message.chat.id, "⏳ Скачиваю выбранный трек, пожалуйста, подождите...")
         
-        # Генерируем уникальный ID для имени файла
         file_id = str(uuid.uuid4())[:8]
         ydl_opts = {
             'format': 'bestaudio/best',
@@ -210,9 +206,19 @@ def handle_callbacks(call):
             }],
             'noplaylist': True,
             'quiet': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'ios']
+                }
+            }
         }
         
+        # Если файл cookies.txt существует в корневой папке проекта, подключаем его
+        if os.path.exists('cookies.txt'):
+            ydl_opts['cookiefile'] = 'cookies.txt'
+        
         try:
+            track_url = f"https://www.youtube.com/watch?v={video_id}"
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([track_url])
                 file_path = os.path.join(DOWNLOAD_DIR, f"{file_id}.mp3")
@@ -233,8 +239,8 @@ def handle_callbacks(call):
                     bot.edit_message_text("Ошибка обработки файла.", chat_id=call.message.chat.id, message_id=downloading_msg.message_id)
         
         except Exception as e:
-            print(f"Ошибка при скачивании трека с SoundCloud: {e}")
-            bot.edit_message_text("Не удалось скачать этот трек. SoundCloud отклонил запрос.", chat_id=call.message.chat.id, message_id=downloading_msg.message_id)
+            print(f"Ошибка при скачивании трека с YouTube: {e}")
+            bot.edit_message_text("Не удалось скачать этот трек из-за ограничений YouTube.", chat_id=call.message.chat.id, message_id=downloading_msg.message_id)
 
 if __name__ == '__main__':
     threading.Thread(target=run_health_check_server, daemon=True).start()
