@@ -23,8 +23,12 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is running")
 
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+
 def run_health_check_server():
-    # Render автоматически передает порт в переменную окружения PORT
     port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
     print(f"Веб-сервер запущен на порту {port}")
@@ -39,7 +43,7 @@ def search_and_send_audio(message):
     query = message.text
     status_msg = bot.reply_to(message, f"🔍 Ищу и скачиваю: '{query}'...")
     
-ydl_opts = {
+    ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'postprocessors': [{
@@ -49,7 +53,6 @@ ydl_opts = {
         }],
         'noplaylist': True,
         'quiet': True,
-        # Обход блокировок: заставляем запросы выглядеть как запросы с Android/iOS приложений
         'extractor_args': {
             'youtube': {
                 'player_client': ['android', 'ios']
@@ -91,7 +94,7 @@ ydl_opts = {
         bot.edit_message_text("Произошла ошибка при поиске.", chat_id=message.chat.id, message_id=status_msg.message_id)
 
 if __name__ == '__main__':
-    # Запуск веб-сервера в фоновом потоке для прохождения Health Check на Render
+    # Запуск веб-сервера для Render
     threading.Thread(target=run_health_check_server, daemon=True).start()
     
     print("Бот запускает polling...")
